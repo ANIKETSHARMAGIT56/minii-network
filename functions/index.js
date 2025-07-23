@@ -1,11 +1,6 @@
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
+const functions = require('firebase-functions/v1');
 
-admin.initializeApp();
-
-
-//when user is created , it creates a node in the rtdb
-
+// Trigger when a new user signs up via Firebase Authentication
 exports.onUserCreated = functions.auth.user().onCreate((user) => {
   return admin.database().ref(`/users/${user.uid}`).set({
     email: user.email || null,
