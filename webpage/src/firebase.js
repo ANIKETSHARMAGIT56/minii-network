@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getDatabase, connectDatabaseEmulator } from "firebase/database";
-
+import { getFunctions } from 'firebase/functions';
 const firebaseConfig = {
   apiKey: "AIzaSyD-lnauMtphSy5bzPjJjPkHMqXet4WiGJc",
   authDomain: "minii-network.firebaseapp.com",
@@ -16,4 +16,5 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getDatabase(app);
+export const functions = getFunctions(app);
 
