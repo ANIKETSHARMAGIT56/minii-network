@@ -1,8 +1,9 @@
 // src/components/AnimationDashboardPlayer.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { auth } from '../firebase';
 
-// Auto-playing Animation Player Component (inline)
+// Auto-playing Animation Player Component
 function AutoPlayAnimationPlayer({ animation, size = 'medium', fullscreen = false }) {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [playInterval, setPlayInterval] = useState(null);
@@ -25,7 +26,6 @@ function AutoPlayAnimationPlayer({ animation, size = 'medium', fullscreen = fals
     large: fullscreen ? 'gap-2' : 'gap-1'
   };
 
-  // Auto-play animation
   useEffect(() => {
     if (!animation?.frames || animation.frames.length === 0) return;
 
@@ -70,7 +70,7 @@ function AutoPlayAnimationPlayer({ animation, size = 'medium', fullscreen = fals
                 row.map((pixel, colIndex) => (
                   <div
                     key={`${rowIndex}-${colIndex}`}
-                    className={`${sizeClasses[size]} rounded-full transition-all duration-150 ${
+                    className={`${sizeClasses[size]} rounded-full ${
                       pixel 
                         ? 'bg-red-500 shadow-lg shadow-red-500/30' 
                         : 'bg-gray-800'
@@ -86,82 +86,82 @@ function AutoPlayAnimationPlayer({ animation, size = 'medium', fullscreen = fals
   );
 }
 
-// Main Dashboard Player Component
+// Main Dashboard Player Component - FIXED VERSION
 export default function AnimationDashboardPlayer({ userData }) {
   const [selectedAnimation, setSelectedAnimation] = useState('personal');
   const [currentAnimation, setCurrentAnimation] = useState(null);
   const [friendsData, setFriendsData] = useState({});
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const currentUser = auth.currentUser;
 
-  // Initialize Cloud Functions
+  // Initialize Cloud Functions OUTSIDE of render cycle
   const functions = getFunctions();
-  const getFriendDetailsFunction = httpsCallable(functions, 'getFriendDetails');
 
-  // Load friends data using Cloud Function
-  useEffect(() => {
-    const loadFriendsData = async () => {
-      if (!userData?.friends) return;
+  // Use useCallback to memoize the function and prevent infinite re-renders
+  const loadFriendsData = useCallback(async () => {
+    if (!userData?.receivedAnimations) {
+      setFriendsData({});
+      return;
+    }
+    
+    const friendUids = Object.keys(userData.receivedAnimations);
+    if (friendUids.length === 0) {
+      setFriendsData({});
+      return;
+    }
+
+    try {
+      // Create the function call inside the callback
+      const getFriendDetailsFunction = httpsCallable(functions, 'getFriendDetails');
+      const result = await getFriendDetailsFunction({ 
+        friendUids: friendUids 
+      });
       
-      const friendUids = Object.keys(userData.friends);
-      if (friendUids.length === 0) return;
-
-      try {
-        // Use Cloud Function to get friend details
-        const result = await getFriendDetailsFunction({ 
-          friendUids: friendUids 
-        });
-        
-        const friendsWithDetails = {};
-        Object.entries(userData.friends).forEach(([uid, timestamp]) => {
-          const friendData = result.data.friendDetails[uid];
-          if (friendData) {
-            friendsWithDetails[uid] = {
-              displayName: friendData.displayName || friendData.email || 'Unknown User',
-              email: friendData.email || '',
-              profilePicture: friendData.profilePicture || null,
-              uid,
-              friendsSince: timestamp
-            };
-          } else {
-            // Fallback data if Cloud Function doesn't return data
-            friendsWithDetails[uid] = {
-              displayName: 'Unknown User',
-              email: '',
-              profilePicture: null,
-              uid,
-              friendsSince: timestamp
-            };
-          }
-        });
-        
-        setFriendsData(friendsWithDetails);
-      } catch (error) {
-        console.error('Error loading friend details:', error);
-        // Create fallback friend data
-        const fallbackFriends = {};
-        Object.entries(userData.friends).forEach(([uid, timestamp]) => {
-          fallbackFriends[uid] = {
+      const friendsWithDetails = {};
+      Object.entries(userData.receivedAnimations).forEach(([uid, animation]) => {
+        const friendData = result.data.friendDetails[uid];
+        if (friendData) {
+          friendsWithDetails[uid] = {
+            displayName: friendData.displayName || friendData.email || 'Unknown User',
+            email: friendData.email || '',
+            uid
+          };
+        } else {
+          friendsWithDetails[uid] = {
             displayName: 'Unknown User',
             email: '',
-            profilePicture: null,
-            uid,
-            friendsSince: timestamp
+            uid
           };
-        });
-        setFriendsData(fallbackFriends);
-      }
-    };
+        }
+      });
+      
+      setFriendsData(friendsWithDetails);
+    } catch (error) {
+      console.error('Error loading friend details:', error);
+      // Create fallback friend data
+      const fallbackFriends = {};
+      Object.keys(userData.receivedAnimations).forEach((uid) => {
+        fallbackFriends[uid] = {
+          displayName: 'Unknown User',
+          email: '',
+          uid
+        };
+      });
+      setFriendsData(fallbackFriends);
+    }
+  }, [userData?.receivedAnimations, functions]); // Only depend on userData.receivedAnimations and functions
 
+  // Load friends data - now with stable function reference
+  useEffect(() => {
     loadFriendsData();
-  }, [userData?.friends, getFriendDetailsFunction]);
+  }, [loadFriendsData]);
 
   // Update current animation when selection changes
   useEffect(() => {
     if (selectedAnimation === 'personal') {
       setCurrentAnimation(userData?.myAnimation || null);
     } else {
-      const friendAnimation = userData?.receivedAnimations?.[selectedAnimation] || null;
-      setCurrentAnimation(friendAnimation);
+      setCurrentAnimation(userData?.receivedAnimations?.[selectedAnimation] || null);
     }
   }, [selectedAnimation, userData]);
 
@@ -215,7 +215,7 @@ export default function AnimationDashboardPlayer({ userData }) {
                 onChange={handleAnimationChange}
               >
                 <option value="personal">🎨 My Personal Animation</option>
-                {Object.entries(userData?.receivedAnimations || {}).map(([uid]) => {
+                {Object.entries(userData?.receivedAnimations || {}).map(([uid, animation]) => {
                   const friend = friendsData[uid];
                   return (
                     <option key={uid} value={uid}>

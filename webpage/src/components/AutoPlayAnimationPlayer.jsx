@@ -77,7 +77,7 @@ export default function AutoPlayAnimationPlayer({
                 row.map((pixel, colIndex) => (
                   <div
                     key={`${rowIndex}-${colIndex}`}
-                    className={`${sizeClasses[size]} rounded-full transition-all duration-150 ${
+                    className={`${sizeClasses[size]} rounded-full ${
                       pixel 
                         ? 'bg-red-500 shadow-lg shadow-red-500/30' 
                         : 'bg-gray-800'

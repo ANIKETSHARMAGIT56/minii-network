@@ -57,7 +57,7 @@ export default function AnimationPlayer({ animation, size = 'medium', showContro
       <div className="card-body p-4">
         <h3 className="font-semibold text-center mb-2">{animation.name}</h3>
         
-        {/* LED Animation Grid */}
+        {/* LED Animation Grid - NO TRANSITIONS */}
         <div className="flex justify-center">
           <div className={`inline-block bg-black rounded-lg ${containerSizes[size]}`}>
             <div className="grid grid-cols-8 gap-1">
@@ -65,7 +65,7 @@ export default function AnimationPlayer({ animation, size = 'medium', showContro
                 row.map((pixel, colIndex) => (
                   <div
                     key={`${rowIndex}-${colIndex}`}
-                    className={`${sizeClasses[size]} rounded-full transition-all duration-150 ${
+                    className={`${sizeClasses[size]} rounded-full ${
                       pixel 
                         ? 'bg-red-500 shadow-lg shadow-red-500/30' 
                         : 'bg-gray-800'
