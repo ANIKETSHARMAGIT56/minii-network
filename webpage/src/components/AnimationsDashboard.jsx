@@ -1,5 +1,5 @@
-// src/components/AnimationsDashboard.jsx
-import React, { useState, useEffect } from 'react';
+// src/components/AnimationsDashboard.jsx - FIXED VERSION
+import React, { useState, useEffect, useCallback } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from '../firebase';
@@ -16,11 +16,67 @@ export default function AnimationsDashboard() {
   const [showSender, setShowSender] = useState(false);
   const [activeTab, setActiveTab] = useState('received');
   const [loading, setLoading] = useState(true);
+  const [friendsLoading, setFriendsLoading] = useState(false);
   const currentUser = auth.currentUser;
 
-  // Initialize Cloud Functions
+  // Initialize Cloud Functions OUTSIDE of render cycle
   const functions = getFunctions();
-  const getFriendDetailsFunction = httpsCallable(functions, 'getFriendDetails');
+
+  // Memoized function to load friend details
+  const loadFriendDetails = useCallback(async (friendsData) => {
+    if (!friendsData || Object.keys(friendsData).length === 0) {
+      setFriends({});
+      return;
+    }
+
+    setFriendsLoading(true);
+    try {
+      const friendUids = Object.keys(friendsData);
+      const getFriendDetailsFunction = httpsCallable(functions, 'getFriendDetails');
+      const result = await getFriendDetailsFunction({ friendUids });
+      
+      const friendsWithDetails = {};
+      Object.entries(friendsData).forEach(([uid, timestamp]) => {
+        const friendData = result.data.friendDetails[uid];
+        if (friendData) {
+          friendsWithDetails[uid] = {
+            displayName: friendData.displayName || friendData.email || 'Unknown User',
+            email: friendData.email || '',
+            profilePicture: friendData.profilePicture || null,
+            uid,
+            friendsSince: timestamp
+          };
+        } else {
+          // Fallback data if Cloud Function doesn't return data
+          friendsWithDetails[uid] = {
+            displayName: 'Unknown User',
+            email: '',
+            profilePicture: null,
+            uid,
+            friendsSince: timestamp
+          };
+        }
+      });
+      
+      setFriends(friendsWithDetails);
+    } catch (error) {
+      console.error('Error loading friend details:', error);
+      // Create fallback friend data
+      const fallbackFriends = {};
+      Object.entries(friendsData).forEach(([uid, timestamp]) => {
+        fallbackFriends[uid] = {
+          displayName: 'Unknown User',
+          email: '',
+          profilePicture: null,
+          uid,
+          friendsSince: timestamp
+        };
+      });
+      setFriends(fallbackFriends);
+    } finally {
+      setFriendsLoading(false);
+    }
+  }, [functions]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -48,61 +104,12 @@ export default function AnimationsDashboard() {
     });
     unsubscribers.push(unsubSent);
 
-    // Get friends list using Cloud Function
+    // Get friends list - FIXED to prevent infinite calls
     const friendsRef = ref(db, `users/${currentUser.uid}/friends`);
-    const unsubFriends = onValue(friendsRef, async (snapshot) => {
+    const unsubFriends = onValue(friendsRef, (snapshot) => {
       const friendsData = snapshot.val() || {};
-      
-      if (Object.keys(friendsData).length > 0) {
-        try {
-          // Use Cloud Function to get friend details
-          const result = await getFriendDetailsFunction({ 
-            friendUids: Object.keys(friendsData) 
-          });
-          
-          const friendsWithDetails = {};
-          Object.entries(friendsData).forEach(([uid, timestamp]) => {
-            const friendData = result.data.friendDetails[uid];
-            if (friendData) {
-              friendsWithDetails[uid] = {
-                displayName: friendData.displayName || friendData.email || 'Unknown User',
-                email: friendData.email || '',
-                profilePicture: friendData.profilePicture || null,
-                uid,
-                friendsSince: timestamp
-              };
-            } else {
-              // Fallback data if Cloud Function doesn't return data
-              friendsWithDetails[uid] = {
-                displayName: 'Unknown User',
-                email: '',
-                profilePicture: null,
-                uid,
-                friendsSince: timestamp
-              };
-            }
-          });
-          
-          setFriends(friendsWithDetails);
-        } catch (error) {
-          console.error('Error loading friend details:', error);
-          // Create fallback friend data
-          const fallbackFriends = {};
-          Object.entries(friendsData).forEach(([uid, timestamp]) => {
-            fallbackFriends[uid] = {
-              displayName: 'Unknown User',
-              email: '',
-              profilePicture: null,
-              uid,
-              friendsSince: timestamp
-            };
-          });
-          setFriends(fallbackFriends);
-        }
-      } else {
-        setFriends({});
-      }
-      
+      // Call the memoized function to load friend details
+      loadFriendDetails(friendsData);
       setLoading(false);
     });
     unsubscribers.push(unsubFriends);
@@ -110,7 +117,7 @@ export default function AnimationsDashboard() {
     return () => {
       unsubscribers.forEach(unsubscribe => unsubscribe());
     };
-  }, [currentUser, getFriendDetailsFunction]);
+  }, [currentUser, loadFriendDetails]); // Now loadFriendDetails is stable
 
   if (loading) {
     return (
@@ -179,7 +186,6 @@ export default function AnimationsDashboard() {
       {/* Animations Section with Tabs */}
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          {/* Tab Navigation */}
           <div className="tabs tabs-boxed mb-4">
             <button 
               className={`tab ${activeTab === 'received' ? 'tab-active' : ''}`}
@@ -194,6 +200,13 @@ export default function AnimationsDashboard() {
               Sent ({Object.keys(sentAnimations).length})
             </button>
           </div>
+
+          {friendsLoading && (
+            <div className="text-center mb-4">
+              <span className="loading loading-spinner loading-sm"></span>
+              <span className="ml-2">Loading friend details...</span>
+            </div>
+          )}
 
           {/* Received Animations Tab Content */}
           {activeTab === 'received' && (
