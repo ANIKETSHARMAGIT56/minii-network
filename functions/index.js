@@ -489,3 +489,75 @@ exports.getFriendDetails = functions.https.onCall(async (data, context) => {
     throw error;
   }
 });
+
+
+// Get all animations for dashboard (personal + friends)
+exports.getAllAnimations = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Must be authenticated",
+    );
+  }
+
+  const currentUid = context.auth.uid;
+
+  try {
+    // Get current user's data
+    const currentUserSnapshot = await admin
+        .database()
+        .ref(`/users/${currentUid}`)
+        .once("value");
+    const currentUserData = currentUserSnapshot.val();
+
+    if (!currentUserData) {
+      throw new functions.https.HttpsError(
+          "not-found",
+          "Current user not found",
+      );
+    }
+
+    const result = {
+      personal: null,
+      friends: {},
+    };
+
+    // Get personal animation
+    if (currentUserData.myAnimation) {
+      result.personal = currentUserData.myAnimation;
+    }
+
+    // Get friends' animations from receivedAnimations
+    if (currentUserData.receivedAnimations) {
+      for (const [friendUid, animationData] of Object.entries(
+          currentUserData.receivedAnimations,
+      )) {
+        // Verify this person is actually a friend
+        const isFriend = currentUserData.friends &&
+          currentUserData.friends[friendUid];
+
+        if (isFriend) {
+          // Get friend's display name for better UX
+          const friendSnapshot = await admin
+              .database()
+              .ref(`/users/${friendUid}`)
+              .once("value");
+          const friendData = friendSnapshot.val();
+
+          result.friends[friendUid] = {
+            ...animationData,
+            senderName: (friendData && friendData.displayName) ||
+              (friendData && friendData.email) || "Unknown Friend",
+            senderEmail: (friendData && friendData.email) || "",
+          };
+        }
+      }
+    }
+
+    console.log(`✅ Animation data retrieved for user ${currentUid}`);
+    return result;
+  } catch (error) {
+    console.error("Error getting all animations:", error);
+    throw error;
+  }
+});

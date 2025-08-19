@@ -1,6 +1,6 @@
 // src/components/AnimationCreator.jsx
 import React, { useState, useEffect } from 'react';
-import { ref, set, get, update } from 'firebase/database';
+import { ref, set, get} from 'firebase/database';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from '../firebase';
 
